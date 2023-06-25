@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <time.h>
 #include <float.h>
 #include <curand_kernel.h>
@@ -12,14 +12,14 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
-// limited version of checkCudaErrors from helper_cuda.h in CUDA examples
+// Ограниченная версия checkCudaErrors из helper_cuda.h в примерах CUDA
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
 
 void check_cuda(cudaError_t result, char const* const func, const char* const file, int const line) {
     if (result) {
         std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " <<
             file << ":" << line << " '" << func << "' \n";
-        // Make sure we call CUDA Device Reset before exiting
+        // Убедимся, что мы вызываем сброс устройства CUDA перед выходом
         cudaDeviceReset();
         exit(99);
     }
@@ -52,7 +52,7 @@ __device__ vec3 color(const ray& r, hitable** world, curandState* local_rand_sta
             return cur_attenuation * c;
         }
     }
-    return vec3(0.0, 0.0, 0.0); // exceeded recursion
+    return vec3(0.0, 0.0, 0.0); // превышенная рекурсия
 }
 
 __global__ void rand_init(curandState* rand_state) {
@@ -107,7 +107,7 @@ __global__ void create_world(hitable** d_list, hitable** d_world, camera** d_cam
                 float choose_mat = RND;
                 vec3 center(a + RND, 0.2, b + RND);
                 if (choose_mat < 0.8f) {
-                    d_list[i++] = new sphere(center, 0.2,
+                    d_list[i++] = new sphere(center, 0.2,                                               
                         new lambertian(vec3(RND * RND, RND * RND, RND * RND)));
                 }
                 else if (choose_mat < 0.95f) {
@@ -124,10 +124,11 @@ __global__ void create_world(hitable** d_list, hitable** d_world, camera** d_cam
         d_list[i++] = new sphere(vec3(4, 1, 0), 1.0, new metal(vec3(0.7, 0.6, 0.5), 0.0));
         *rand_state = local_rand_state;
         *d_world = new hitable_list(d_list, 22 * 22 + 1 + 3);
-
-        vec3 lookfrom(13, 2, 3);
+        //*******************************************************************************************
+        vec3 lookfrom(13, 3, 0);                                     
         vec3 lookat(0, 0, 0);
         float dist_to_focus = 10.0; (lookfrom - lookat).length();
+        //*******************************************************************************************
         float aperture = 0.1;
         *d_camera = new camera(lookfrom,
             lookat,
@@ -159,25 +160,29 @@ int main(int argv, char** args) {
     {
         return false;
     }
-    pWindow = SDL_CreateWindow("RayTracer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 500, SDL_WINDOW_SHOWN);
+    //*********************************************************************************
+    pWindow = SDL_CreateWindow("RayTracer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1350, 800, SDL_WINDOW_SHOWN);   
     if (pWindow != NULL)
     {
         pRenderer = SDL_CreateRenderer(pWindow, -1, 0);
 
-        m_image.Initialize(800, 500, pRenderer);
+        m_image.Initialize(1350, 800, pRenderer);  
+    //*********************************************************************************
 
-        SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(pRenderer, 255, 255, 255, 255); //ставим белый цвет фона
         SDL_RenderClear(pRenderer);
     }
-    int nx = 800;
-    int ny = 500;
-    int ns = 10;
+    //###################################################################################
+    int nx = 1350; //ширина окна
+    int ny = 800;  //высота
+    int ns = 20;   //число выборок на один пиксель - отвечает за качество рендера
     int tx = 8;
-    int ty = 8;
+    int ty = 8;    //размеры блока
+    //###################################################################################
 
     cudaDeviceProp devProp;
     cudaGetDeviceProperties(&devProp, 0);
-    std::cerr << "Device 1: " << devProp.name << "\n";
+    std::cerr << "Device 1: " << devProp.name << "\n";   //видеокарта, если их две и более, дублируем строку
 
     std::cerr << "Rendering a " << nx << "x" << ny << " image with " << ns << " samples per pixel ";
     std::cerr << "in " << tx << "x" << ty << " blocks.\n";
@@ -185,22 +190,22 @@ int main(int argv, char** args) {
     int num_pixels = nx * ny;
     size_t fb_size = num_pixels * sizeof(vec3);
 
-    // allocate FB
+    // выделение FB
     vec3* fb;
     checkCudaErrors(cudaMallocManaged((void**)&fb, fb_size));
 
-    // allocate random state
+    // выделение случайного состояния
     curandState* d_rand_state;
     checkCudaErrors(cudaMalloc((void**)&d_rand_state, num_pixels * sizeof(curandState)));
     curandState* d_rand_state2;
     checkCudaErrors(cudaMalloc((void**)&d_rand_state2, 1 * sizeof(curandState)));
 
-    // we need that 2nd random state to be initialized for the world creation
+    // нам нужно, чтобы это 2-е случайное состояние было инициализировано для создания мира
     rand_init << <1, 1 >> > (d_rand_state2);
     checkCudaErrors(cudaGetLastError());
     checkCudaErrors(cudaDeviceSynchronize());
 
-    // make our world of hitables & the camera
+    // создаём наш мир из хитовых объектов и камеры
     hitable** d_list;
     int num_hitables = 22 * 22 + 1 + 3;
     checkCudaErrors(cudaMalloc((void**)&d_list, num_hitables * sizeof(hitable*)));
@@ -214,7 +219,7 @@ int main(int argv, char** args) {
 
     clock_t start, stop;
     start = clock();
-    // Render our buffer
+    // Визуализируем наш буфер
     dim3 blocks(nx / tx + 1, ny / ty + 1);
     dim3 threads(tx, ty);
     render_init << <blocks, threads >> > (nx, ny, d_rand_state);
@@ -227,7 +232,7 @@ int main(int argv, char** args) {
     double timer_seconds = ((double)(stop - start)) / CLOCKS_PER_SEC;
     std::cerr << "took " << timer_seconds << " seconds.\n";
 
-    // Output FB as Image
+    // Вывод FB в виде изображения
     std::cout << "P3\n" << nx << " " << ny << "\n255\n";
     for (int j = ny - 1; j >= 0; j--) {
         for (int i = 0; i < nx; i++) {
@@ -272,7 +277,7 @@ int main(int argv, char** args) {
     pWindow = NULL;
     SDL_Quit();
 
-    // clean up
+    // очистка
     checkCudaErrors(cudaDeviceSynchronize());
     free_world << <1, 1 >> > (d_list, d_world, d_camera);
     checkCudaErrors(cudaGetLastError());
